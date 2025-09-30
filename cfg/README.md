@@ -19,3 +19,9 @@ For example,
 <br>
 
 [See here for more options](https://huggingface.co/models?pipeline_tag=automatic-speech-recognition&library=transformers&sort=trending)
+
+### mascot.png
+An image to display while the work is in progress.
+
+### cache.json
+Default cache options to use for each Transcriber user.

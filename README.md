@@ -1,4 +1,5 @@
-# Transcriber
+# Jaffe-Lurie Transcribble
+### An offline user friendly transcription tool
 - Uses various [`openai-whisper`](https://github.com/openai/whisper) based models to transcribe audio or video files.
 - Runs locally.
 - Outputs into a clean .cha file by utterance.
@@ -176,6 +177,13 @@ Now that you have all of the requirements installed we will install the Transcri
 4. Start transcript (button).
 5. Wait for final results popup to appear. _Your transcribed files should automatically open as they are completed._
 6. Review resulting transcripts.
+---
+
+# Citation
+
+Please see the [CITATION](CITATION.cff) file for citing this work.
+
+> Jaffe, N., & Lurie, S. (2025). *Jaffe-Lurie Transcribble* [Computer software]. GitHub. https://github.com/Noah-Jaffe/Transcribble
 
 
 # Frequently asked questions:

@@ -1,3 +1,27 @@
+__doc__ = """transcribe_proc.py
+The transcribe process!
+To run directly from the command line:
+
+    python transcribe_proc.py [jsonified_string]
+
+Where the `jsonified_string` is jsonified object of the arguments for the transcribe_file function.
+
+Valid arguments for the transcribe_file function:
+    input_file (str): File path for input file to be transcribed.
+    model_name (str, optional): huggingface id of the model to be used. Defaults to talkbank's default model.
+    num_speakers (int, optional): number of speakers to be diarized for, 1 to skip this step in the pipeline. Defaults to 2.
+    lang (str, optional): 3 letter language code for the assumed language. Defaults to "eng".
+    open_after (bool, optional): To open the file afterwards or not. Defaults to True.
+    debug (bool, optional): To include @debug lines or not in the output file. Defaults to True.
+
+The following lines are all valid examples to run this file:
+    # Run a single file:
+    python transcribe_proc.py '{"input_file": "../path/to/my/file.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 2, "lang": "eng"}'
+
+    # Run multiple files:
+    python transcribe_proc.py '[ {"input_file": "../path/to/my/file.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 2, "lang": "eng"}, {"input_file": "../path/to/my/file2.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 3, "lang": "spa"} ]'
+    python transcribe_proc.py '{"input_file": "../path/to/my/file.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 2, "lang": "eng"}' '{"input_file": "../path/to/my/file2.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 3, "lang": "spa"}'
+"""
 import batchalign as ba
 from tkinter import messagebox
 import os
@@ -9,9 +33,9 @@ from types import FunctionType
 from huggingface_hub.hf_api import repo_exists as is_valid_model_id
 import pycountry
 import soundfile
+from datetime import datetime
 # from CustomAiEngine import CustomAiEngine
 
-DEBUG_MODE = True
 
 DEBUG_LINE_PREFIX = "@DEBUG"
 DEBUG_PREAMBLE = "\n".join([f"{DEBUG_LINE_PREFIX} {line}" for line in [
@@ -33,12 +57,18 @@ def debug_get_version() -> str:
         return f'{commit_hash} | {diffs}'
     except subprocess.CalledProcessError as e:
         return f'UNKNOWN-NON-GIT'
+    except:
+        return 'UNKNOWN VERSION!'
 
 
 def open_file(file_path):
-    # this process is blocking so we dont do it for now so that we can run through the rest of the files given by the UI component
+    """Open the file for the user to see.
+
+    Args:
+        file_path (str): file path to be opened
+    """
     try:
-        # win & mac
+        # windows & mac
         subprocess.call(["open", file_path])
     except:
         try:
@@ -46,7 +76,7 @@ def open_file(file_path):
             subprocess.call(["xdg-open", file_path])
         except:
             try:
-                # win
+                # windows
                 os.startfile(file_path)
             except:
                 print(f"READY TO OPEN FILE: {file_path}", flush=True)
@@ -59,10 +89,28 @@ def spawn_popup_activity(title, message, yes=None, no=None):
         return no()
 
 
-def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng"):
+def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", open_after=True, debug=True, **kwargs):
+    """Transcribe an audio file.
+    Applies the following pipelines:
+        - whisper,
+        - diarization (if num_speakers > 1)
+        - disfluency,
+        - retrace,
+        - morphosyntax (temporarily disabled),
+        - utterance,
+        - force alignment
+    Args:
+        input_file (str): File path for input file to be transcribed.
+        model_name (str, optional): huggingface id of the model to be used. Defaults to talkbank's default model.
+        num_speakers (int, optional): number of speakers to be diarized for, 1 to skip this step in the pipeline. Defaults to 2.
+        lang (str, optional): 3 letter language code for the assumed language. Defaults to "eng".
+        open_after (bool, optional): To open the file afterwards or not. Defaults to True.
+        debug (bool, optional): To include @debug lines or not in the output file. Defaults to True.
+    """
     debug_logs = []
-    debug_logs.append(f"Transcriber version: {debug_get_version()}")
-    debug_logs.append(f"Args: {input_file} {model_name} {num_speakers} {lang}")
+    log_line = debug_logs.append if debug else print
+    log_line(f"Transcriber version: {debug_get_version()}")
+    log_line(f"Args: {input_file} {model_name} {num_speakers} {lang} {open_after} {debug}")
 
     try:
         num_speakers = int(num_speakers)
@@ -73,9 +121,12 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng"):
     except:
         lang = 'eng'
     # transcribe
-    # whisper = CustomAiEngine(model=model_name, lang=lang)
     whisper = ba.WhisperEngine(model=model_name, lang=lang)
-
+    
+    # @todo in the future enable us to use any form of AI tool
+    #   this will require us to normalize the tool's output.
+    # whisper = CustomAiEngine(model=model_name, lang=lang)
+    
     # split by speaker
     diarization = ba.NemoSpeakerEngine(num_speakers=num_speakers)
 
@@ -105,6 +156,7 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng"):
         fa
     ] if action]
     
+    # rename the file so that it does not overwrite any existing files
     n = 0
     output_file = f"{input_file}{'_'+str(n) if n > 0 else ''}.cha"
     while 1:
@@ -112,7 +164,11 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng"):
         if not os.path.exists(output_file):
             break
         n += 1
+
+    # initalize the .cha file using the batchalign tools
     doc = ba.Document.new(media_path=input_file, lang=lang)
+
+    # roll through the pipeline and attempt to execute each activity
     for idx, activity in enumerate(pipeline_activity, start=1):
         step_status = ["Started"]
         nlp = ba.BatchalignPipeline(activity)
@@ -120,40 +176,75 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng"):
             print(f"{input_file} - starting pipeline action: {idx}/{len(pipeline_activity)} - {(type(activity).__name__).replace('Engine','')}")
             doc = nlp(doc)
             chat = ba.CHATFile(doc=doc)
+            # write to disk after each successful step
             chat.write(output_file, write_wor=False)
             step_status = ["SUCCESSFUL"]
         except Exception as e:
             step_status = traceback.format_exc().split("\n")
+            # begin non barebones
             # using the soundfile LibsndfileError is not required if you want to run bare-bones
             if isinstance(e, soundfile.LibsndfileError):
                 step_status.append("The input file type is not supported! Please convert the file type manually and try again!")
+            if type(activity).__name__ == "Whisper" and type(e).__name__ == 'TypeError':
+                # assume it is one of the TypeError: '<=' not supported between instances of 'NoneType' and 'float' errors, so we split up the file and re-run on those, then re-join them at the end?
+                step_status.append("An unexpected error occured while transcribing this file. A potential work-around is to re-run the transcriber on the split files and join them automatically.")
+                
+            # end non barebones
             print(f"{input_file} had an error on step: {idx}/{len(pipeline_activity)} - {(type(activity).__name__).replace('Engine','')}")
             traceback.print_exc()
         
+        # format the @debug lines for the output file
         for i, line in enumerate(step_status, start=1):
             debug_logs.append(f"Step {idx}/{len(pipeline_activity)} - {(type(activity).__name__).replace('Engine','')} - {i}/{len(step_status)} - {line}")
 
         print(f"Step {idx}/{len(pipeline_activity)} - {(type(activity).__name__).replace('Engine','')}\n" + "\n".join(step_status))
 
-    if DEBUG_MODE:
+    if debug:
+        # write the @debug lines to the .cha file
         with open(output_file,'a',encoding='utf-8') as f:
             f.write(f"\n{DEBUG_PREAMBLE}\n")
             f.write("\n".join([f"{DEBUG_LINE_PREFIX} {line}" for line in debug_logs]))
+    
     print(f"Completed transcription for {input_file}! The output file can be found directly next to the input file in your file system with a '.cha' file extension: {output_file}", flush=True)
-    # uncomment this next block if you want the output file to automatically open
-    # return spawn_popup_activity(title="COMPLETED!",message=f"Completed transcription of\n{input_file}\nOutput file can be found here:\n{output_file}\nOpen file now?", yes=lambda: open_file(output_file))
-    open_file(output_file)
+    
+    if open_after:
+        # open the file when we are done for the users convenience
+        open_file(output_file)
 
+    return output_file
 
+def parse_cli_args():
+    """Parse the sys.argv values for the input parameters (or list of them)
 
-if __name__ == "__main__":
+    Returns:
+        dict[]: array of argument dicts for the transcribe_file function
+    """
+    to_transcribe = []
     print(sys.argv, flush=True)
     for data in sys.argv[1:]:
         try:
             args = json.loads(data)
         except:
             print(f"Failed to parse input data: {data}")
+            print(__doc__)
             continue
-        print("Attempting to transcribe for:", args.get('input_file',args), flush=True)
-        transcribe_file(**args)
-        print("Attempt completed for:", sys.argv[1:], flush=True)
+        if type(args) == dict:
+            args = [args]
+        if type(args) != list:
+            
+            continue
+        to_transcribe += args
+    return to_transcribe
+
+def main():
+    """ Entry point for the script! """
+    # on startup, read in the command line options to determine the parameters for the transcribe function
+    items_to_be_transcribed = parse_cli_args()
+    for item in items_to_be_transcribed:
+        print(f"{datetime.now()} Attempting to transcribe for: {item.get('input_file', item)}", flush=True)
+        # dont put the function call in a try catch, if it fails we want it to dump a full stacktrace
+        transcribe_file(**item)
+        print(f"{datetime.now()} Attempt completed for: {item.get('input_file', item)}", flush=True)
+
+if __name__ == "__main__":
+    main()
