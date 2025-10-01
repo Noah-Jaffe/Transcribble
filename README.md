@@ -104,11 +104,11 @@ Now that you have all of the requirements installed we will install the Transcri
     1. use "cd" to change directory to where you want to install the transcriber
         example: to your Documents folder:
         `cd ~/Documents`
-    1. Clone the Transcriber repo:
-        `git clone https://github.com/Noah-Jaffe/Transcriber.git`
-        _NOTE: If you get the error: `fatal: destination path 'Transcriber' already exists and is not an empty directory.`, you will need to either delete the existing Transcriber folder, or rename the existing one. Or install to a custom directory by replacing NEW_FOLDER_NAME in the following command: `git clone https://github.com/Noah-Jaffe/Transcriber.git NEW_FOLDER_NAME`._
-    1. Enter the Transcriber directory in the terminal
-        `cd Transcriber` or `cd ~/Documents/Transcriber`
+    1. Clone the Transcribble repo:
+        `git clone https://github.com/Noah-Jaffe/Transcribble.git`
+        _NOTE: If you get the error: `fatal: destination path 'Transcribble' already exists and is not an empty directory.`, you will need to either delete the existing Transcribble folder, or rename the existing one. Or install to a custom directory by replacing NEW_FOLDER_NAME in the following command: `git clone https://github.com/Noah-Jaffe/Transcribble.git NEW_FOLDER_NAME`._
+    1. Enter the Transcribble directory in the terminal
+        `cd Transcribble` or `cd ~/Documents/Transcribble`
     1. Setup a python virtual environment if you want, skip this step if you are unfamiliar.
         `python -m venv .venv`
         - <a id="start-activate-venv"></a>Start/Activate your virtual python environment with
@@ -119,8 +119,8 @@ Now that you have all of the requirements installed we will install the Transcri
                 - `source ./.venv/bin/activate`
 
     1. <a id="pip install"></a>`pip install -r requirements.txt`
-        - if the pip install fails try `pip install -r explicit_requirements.txt --no-cache`
-        - if that fails, [report the issue to the maintainer or your point of contact](https://github.com/Noah-Jaffe/Transcriber/issues)
+        - if the pip install fails try installing each package one at a time, by line as it is written in the requirements.txt file.
+        - if that fails, [report the issue to the maintainer or your point of contact](https://github.com/Noah-Jaffe/Transcribble/issues)
         - The only requirements not in the txt files are `torch` `torchaudio` and `torchvision`
     1. Install requirements not in requirements.txt
 
@@ -142,7 +142,7 @@ Now that you have all of the requirements installed we will install the Transcri
         - Example for windows:
             Save anywhere as "`Transcribe.ps1`"
             ```sh
-            cd ~/Documents/Transcriber
+            cd ~/Documents/Transcribble
             # if you used a virtual environment uncomment the next line (remove the #)
             #./venv/Scripts/activate
             python main.py
@@ -151,7 +151,7 @@ Now that you have all of the requirements installed we will install the Transcri
             Save anywhere as "`Transcribe.sh`"
             ```
             #!/bin/bash
-            cd ~/Documents/Transcriber
+            cd ~/Documents/Transcribble
             # if you used a virtual environment uncomment the next line (remove the #)
             # source .venv/bin/activate
             python main.py
@@ -201,15 +201,14 @@ To attempt patch #1:
 - If using a virtual environment start/activate that now. [See here](#start-activate-venv)
 - Run `pip install transformers==4.38.2`
 
-If you are already using this version of transformers, I'm sorry but the only known workaround is to split up the original file into smaller segments, and run the smaller segments through the transcriber again. Eventually you may hit a small section of the original audio file that crashes constantly, for that you will have to transcribe by hand.
+If you are already using this version of transformers, I'm sorry but the only known workaround is to split up the original file into smaller segments, and then run the smaller segments through the transcriber again. Eventually you may hit a small section of the original audio file that crashes constantly, for that you will have to transcribe by hand.
 
-*NOTE: v1.1.0 is in the works with an automated fix for this*
 
-### How to update my Transcriber app?
+### How to update my Transcribble app?
 
 If you followed the instructions on this readme file, or installed this repo with git:
-1. Enter the Transcriber directory in the terminal
-`cd Transcriber` or `cd ~/Documents/Transcriber`
+1. Enter the Transcribble directory in the terminal
+`cd Transcribble` or `cd ~/Documents/Transcribble`
 1. Update to the latest version with the following commands:
 `git pull`
 1. Re-install the latest requirements
@@ -227,14 +226,11 @@ If you followed the instructions on this readme file, or installed this repo wit
 
 ### How do I get rid of these ugly @debug lines in my .cha file?
 
-Edit your [transcribe_proc.py](transcribe_proc.py) file to update that the line that is
-`DEBUG_MODE = True`
-to
-`DEBUG_MODE = False`
+De-select the Debug checkbox before clicking the start transcribe button.
 
 ### Where is the core logic for the AI?
 
-See function `transcribe_file` in [transcribe_proc.py](transcribe_proc.py). Note that you can ignore the chunks that reference or are dependant on DEBUG.
+See function `transcribe_file` in [transcribe_proc.py](transcribe_proc.py).
 
 ### Yall got some Morphosyntax?
 In function `transcribe_file` in [transcribe_proc.py](transcribe_proc.py): 
@@ -256,5 +252,6 @@ so that it looks like
 - [ ] Bundle into single executable to be more user friendly?
 - [ ] Select subframe of time to transcribe from?
 - [ ] Better error handling
+- [ ] Checkboxes for pipeline steps?
 
 
