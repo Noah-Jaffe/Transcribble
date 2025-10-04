@@ -120,7 +120,7 @@ class DataMapping(object):
 
         name, ext = fp.parts[-1].rsplit('.', 1)
         if not allow_overwrite and fp.exists():
-            as_fn = lambda p, n, e, i: Path(p.parent, f"{n}{"." + encode_int(i) if i else ''}{'.' + e if e else ''}")
+            as_fn = lambda p, n, e, i: Path(p.parent, f"{n}{'.' + encode_int(i) if i else ''}{'.' + e if e else ''}")
             num = 0
             name, ext = fp.parts[-1].rsplit('.', 1)
             new_fp = as_fn(fp, name, ext, num)
