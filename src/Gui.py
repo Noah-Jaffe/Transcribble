@@ -442,7 +442,7 @@ class MainGUI(tk.Tk):
                 # looks like it probably needs conversion
                 ntype = ".mp3"
                 print(f"Converting {item.data.filepath.get()} to mp3 type so that it can be transcribed!")
-                item.filepath = convert_file_to_type(item.data.filepath.get(), ntype)	# Utils.convert_file_to_type(item.data.filepath.get(), ntype)
+                item.filepath.data.set(convert_file_to_type(item.data.filepath.get(), ntype))	# Utils.convert_file_to_type(item.data.filepath.get(), ntype)
                 print(f"Convertion completed! Audio file can be found {item.data.filepath.get()}")
             
             pstart = datetime.datetime.now()
