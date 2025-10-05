@@ -17,7 +17,8 @@
         # https://github.com/huggingface/transformers/issues/33552#issuecomment-2880032963 states we should try v4.38.2 which appears to work for some cases
         # @todo - occasionally check back in to see if the issue persists in the latest version of transformers
 	# NOTE that some pip installs will update this version, so you will need to re-install the 4.38.2 version again after completing all pip installs
-        transformers==4.38.2
+	# this appears to be fixed? 
+        # transformers==4.38.2
 
 
 #### pip requirements ####
