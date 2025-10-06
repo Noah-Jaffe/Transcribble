@@ -496,7 +496,7 @@ class MainGUI(tk.Tk):
         print(f"Took {runtime} to transcribe ~{twords} words from ({parsetime}) across {len(self.data_file_entries)} files!")
     
     def show_about(self):
-        messagebox.showinfo('About Transcribble', 'https://github.com/Noah-Jaffe/Transcribble\n\nJaffe, N., & Lurie, S. (2025). *Jaffe-Lurie Transcribble* [Computer software]. GitHub. https://github.com/Noah-Jaffe/Transcribble\n\nPlease see the README.md file for more info!')
+        messagebox.showinfo('About Transcribble', 'https://github.com/Noah-Jaffe/Transcribble\n\nJaffe, N., & Lurie, S. (2025). *Jaffe-Lurie Transcribble* [Computer software]. GitHub. https://github.com/Noah-Jaffe/Transcribble\n\nPlease see the README.md file for more info!\n\nUse splitfile.py to split an audio file into smaller chunks!')
     
 if __name__ == "__main__":
     from Utils import setup_local_user_cfgs
