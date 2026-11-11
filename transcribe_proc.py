@@ -130,7 +130,7 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
     # whisper = CustomAiEngine(model=model_name, lang=lang)
     
     # split by speaker
-    diarization = ba.NemoSpeakerEngine(num_speakers=num_speakers)
+    diarization = ba.NemoSpeakerEngine(num_speakers=num_speakers) if num_speakers > 1 else None
 
     # recognize pauses
     disfluency = ba.DisfluencyReplacementEngine()
@@ -139,7 +139,7 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
     retrace = ba.NgramRetraceEngine()
     
     # morphotag to get %mor %gra etc.
-    morphosyntax = ba.StanzaEngine()
+    # morphosyntax = ba.StanzaEngine()
 
     # align
     utr = WhisperUTREngine(whisper, lang=lang)
@@ -151,7 +151,7 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
         # comment out each line for what you want to be run or not
         # @todo: make this a text config file?
         whisper,
-        diarization if num_speakers > 1 else None,
+        diarization,
         disfluency,
         retrace,
         # morphosyntax,
