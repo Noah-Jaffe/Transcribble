@@ -56,3 +56,15 @@ class WhisperEngine(ba.WhisperEngine):
         if utterance_model is not None:
             utterance_type = BertCantoneseUtteranceModel if lang == 'yue' else BertUtteranceModel
             self._WhisperEngine__engine = utterance_type(utterance_model)
+
+
+class WhisperUTREngine(ba.WhisperUTREngine):
+    """Recover utterance timings using the already loaded ASR model."""
+
+    def __init__(self, asr: WhisperEngine, lang='eng'):
+        """Share the timestamp-capable backend instead of loading another model."""
+        # ASR already requires timestamp output. The same model therefore supports
+        # upstream timing recovery; its constructor would load a second large model
+        # even on transcripts where process() immediately skips existing timings.
+        self._WhisperUTREngine__whisper = asr.whisper_model
+        self._WhisperUTREngine__lang = lang

@@ -84,6 +84,57 @@ class WhisperSelectionTests(unittest.TestCase):
         self.assertEqual(doc.media.url, 'audio.wav')
         self.assertIn(Whisper.ba.Task.ASR, engine.tasks)
 
+    def test_timing_recovery_reuses_one_loaded_model(self):
+        """ASR and real upstream recovery make one model load, never a default load."""
+        from batchalign.pipelines.utr import whisper_utr as upstream
+        engine = Whisper.WhisperEngine('openai/whisper-tiny.en')
+        recovery = Whisper.WhisperUTREngine(engine)
+        engine.whisper_model(torch.zeros(16000))
+        doc = SimpleNamespace(media=SimpleNamespace(url='audio.wav'), content=[])
+        with patch.object(engine.whisper_model, 'load') as load, patch.object(
+            upstream, 'bulletize_doc', return_value=doc
+        ) as bulletize:
+            load.return_value.all.return_value = torch.zeros(16000)
+            self.assertIs(recovery.process(doc), doc)
+        bulletize.assert_called_once()
+        self.pipeline.assert_called_once()
+        self.assertEqual(self.pipeline.return_value.call_count, 2)
+        self.load_config.assert_called_once_with('openai/whisper-tiny.en')
+        self.tokenizer.assert_called_once_with('openai/whisper-tiny.en')
+        self.processor.assert_called_once_with('openai/whisper-tiny.en')
+        self.assertEqual(recovery.tasks, [Whisper.ba.Task.UTTERANCE_TIMING_RECOVERY])
+
+    def test_timing_recovery_preserves_non_english_selection(self):
+        """Recovery keeps the same multilingual model and language as transcription."""
+        from batchalign.pipelines.utr import whisper_utr as upstream
+        self.config.is_multilingual = True
+        engine = Whisper.WhisperEngine('openai/whisper-tiny', lang='spa')
+        recovery = Whisper.WhisperUTREngine(engine, lang='spa')
+        doc = SimpleNamespace(media=SimpleNamespace(url='audio.wav'), content=[])
+        with patch.object(engine.whisper_model, 'load') as load, patch.object(
+            upstream, 'bulletize_doc', return_value=doc
+        ):
+            load.return_value.all.return_value = torch.zeros(16000)
+            recovery.process(doc)
+        self.pipeline.assert_called_once()
+        options = self.pipeline.return_value.call_args.kwargs['generate_kwargs']
+        self.assertEqual(options['language'], 'Spanish')
+        self.assertEqual(self.pipeline.call_args.kwargs['model'], 'openai/whisper-tiny')
+
+    def test_existing_timings_need_no_recovery_inference_or_model_load(self):
+        """A skipped recovery stage must not load an otherwise unused model."""
+        from batchalign.pipelines.utr import whisper_utr as upstream
+        engine = Whisper.WhisperEngine('openai/whisper-tiny.en')
+        recovery = Whisper.WhisperUTREngine(engine)
+        doc = SimpleNamespace(
+            media=SimpleNamespace(url='audio.wav'),
+            content=[SimpleNamespace(alignment=(0, 1000))],
+        )
+        with patch.object(upstream, 'Utterance', SimpleNamespace), self.assertWarns(UserWarning):
+            self.assertIs(recovery.process(doc), doc)
+        self.pipeline.assert_called_once()
+        self.pipeline.return_value.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
