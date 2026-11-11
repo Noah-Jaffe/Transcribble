@@ -135,7 +135,8 @@ Now that you have all of the requirements installed we will install the Transcri
     1. Install python packages with the command: <a id="pip install"></a>`pip install -r requirements.txt`
         - If the pip install fails try installing each package one at a time, by line as it is written in the [requirements.txt](requirements.txt) file.
         - If that fails, [report the issue to the maintainer or your point of contact](https://github.com/Noah-Jaffe/Transcribble/issues)
-        - `torch` and `torchaudio` are pinned to 2.8.0 because Pyannote 3.x requires audio APIs removed in TorchAudio 2.9. Keep these versions when selecting a CPU or CUDA build below.
+        - The only requirements not in the txt files are `torch` `torchaudio` and `torchvision` (continue reading...)
+    1. Install requirements not in the requirements.txt
     1. Select the appropriate PyTorch build
 
         1. **If you are using CUDA**:
