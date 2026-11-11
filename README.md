@@ -10,7 +10,7 @@
 1. Internet (for install and download of AI models to be run locally)
 1. FFMPEG (should be available via environment PATH)
 1. GIT (should be available via environment PATH)
-1. PYTHON 3.11+ (should be available via environment PATH)
+1. PYTHON 3.12+ (should be available via environment PATH)
 1. Huggingface key/account (for download of AI models to be run locally)
 1. _[Optional]_ CUDA (requires NVIDIA GPUs, for faster runtime)
 
@@ -19,11 +19,11 @@
     - For installation of the transcriber
     - For the AI model download - on the first time you use a model
 
-1. **Python 3.11+**:
+1. **Python 3.12+**:
     - Check to see if you have python installed by running `python --version` in your command line terminal.
-        - If the result reads more like `Python 3.11.0` (or some higher version number), then you can skip to the next requirement.
+        - If the result reads more like `Python 3.12.0` (or some higher version number), then you can skip to the next requirement.
     - Download and install python here: [https://www.python.org/downloads/](https://www.python.org/downloads/)
-    - _Tested on 3.11, 3.12, and 3.13_
+    - _Tested on 3.12, and 3.13_
     - If using the installer, use the following configuration options:
         - Click on `Modify` or `Customize installation` _(whichever one you see)_
         - Select `Add python.exe to PATH` _(for ease of use)_
@@ -102,7 +102,7 @@
     - MacOS:
         - Run the command: `brew install python-tk`
     - Windows:
-        - See the install **Python 3.11+** step and download the installer for the version of python you currently have.
+        - See the install **Python 3.12+** step and download the installer for the version of python you currently have.
         `python --version`
 
 
