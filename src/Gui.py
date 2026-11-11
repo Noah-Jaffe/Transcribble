@@ -2,7 +2,7 @@ import datetime
 import json
 import os
 import subprocess
-import time
+from concurrent.futures import ThreadPoolExecutor
 import soundfile
 from tkinter import messagebox, filedialog
 import traceback
@@ -28,6 +28,8 @@ class MainGUI(tk.Tk):
     data_file_entries: List[tk.Frame] = []
     """List of models"""
     data_model_list: List[str] = []
+    # Prevent concurrent batches while Tk continues processing user events.
+    transcription_running: bool = False
 
     """Main header section"""
     header_frame: tk.Frame = None
@@ -426,12 +428,9 @@ class MainGUI(tk.Tk):
             json.dump(jsonified, indent=2, fp=f)
     
     def start_transcribe(self):
-        """Starts the transcribe process in the background
-        
-        Returns: 
-            : @todo: pipe?
-        """
-        pass
+        """Snapshot the batch and launch blocking work outside Tk's event loop."""
+        if self.transcription_running:
+            return
         self.save_data()
         selected_model = self.footer_combobox_model_selector.get()
         try:
@@ -464,74 +463,97 @@ class MainGUI(tk.Tk):
         if len(self.data_file_entries) == 0:
             raise Exception("Please select a file to transcribe first!")
         
-        mascot = Mascot(self, "IM TRANSCRIIIIBINNNG!!\nTRANSCRIPTION STARTED, Reccomended that you close all background apps that might hog the system resources!")
+        jobs = []
         for item in self.data_file_entries:
-            valid = validate_language(item.data.language.get())	# Utils.validate_language(item.data.language.get())
-            if valid is None:
-                spawn_popup_activity('WARNING!','Transcript process DID NOT START.\nPlease fix the errors and try again.')	# Utils.spawn_popup_activity('WARNING!','Transcript process DID NOT START.\nPlease fix the errors and try again.')
+            language = item.data.language.get()
+            if validate_language(language) is None:
+                spawn_popup_activity('WARNING!', 'Transcript process DID NOT START.\nPlease fix the errors and try again.')
                 return
+            # Read Tk variables only on the main thread. Edits affect the next run.
+            jobs.append({
+                'input_file': item.data.filepath.get(),
+                'num_speakers': item.data.numSpeakers.get(),
+                'lang': language,
+                'model_name': selected_model,
+                'open_after': self.open_when_done.get(),
+                'debug': self.debug_mode.get(),
+            })
+
+        self.transcription_running = True
+        self.footer_button_start_transcribe.config(state='disabled')
+        mascot = None
+        try:
+            mascot = Mascot(self, "IM TRANSCRIIIIBINNNG!!\nTRANSCRIPTION STARTED, Reccomended that you close all background apps that might hog the system resources!")
+            self.title("Transcriber - PLEASE DONT KILL ME - I AM WORKING! I PROMISE!")
+            executor = ThreadPoolExecutor(max_workers=1)
+            try:
+                future = executor.submit(self._transcribe_batch, jobs)
+            finally:
+                executor.shutdown(wait=False)
+            self.after(100, self._poll_transcription, future, mascot)
+        except Exception:
+            self.transcription_running = False
+            self.footer_button_start_transcribe.config(state='normal')
+            self.title("Transcriber")
+            raise
+
+    @staticmethod
+    def _transcribe_batch(jobs):
+        """Convert and transcribe a snapshot of the jobs without touching Tk."""
         parsetime = 0
         twords = 0
         runtime = datetime.timedelta(0)
-        for item in self.data_file_entries:
-            # needs conversion?
-            if not (item.data.filepath.get().split('.')[-1] in get_audio_file_types()):	# Utils.get_audio_file_types()):
-                # looks like it probably needs conversion
-                ntype = ".mp3"
-                print(f"Converting {item.data.filepath.get()} to mp3 type so that it can be transcribed!")
-                item.data.filepath.set(convert_file_to_type(item.data.filepath.get(), ntype))	# Utils.convert_file_to_type(item.data.filepath.get(), ntype)
-                print(f"Convertion completed! Audio file can be found {item.data.filepath.get()}")
-            
+        for job in jobs:
+            input_file = job['input_file']
+            if input_file.split('.')[-1].lower() not in get_audio_file_types():
+                print(f"Converting {input_file} to mp3 type so that it can be transcribed!")
+                input_file = convert_file_to_type(input_file, ".mp3")
+                print(f"Conversion completed! Audio file can be found {input_file}")
+
             pstart = datetime.datetime.now()
-            d = soundfile.info(item.data.filepath.get()).duration
-            print(f"Starting timer for ({d}) '{item.data.filepath.get()}'")
+            d = soundfile.info(input_file).duration
+            print(f"Starting timer for ({d}) '{input_file}'")
             proc = subprocess.Popen(
                 args=[
                     sys.executable,
                     TRANSCRIBE_SUBPROC_FILENAME,
-                    json.dumps({
-                        'input_file': item.data.filepath.get(), 
-                        'num_speakers': item.data.numSpeakers.get(), 
-                        'lang': item.data.language.get(), 
-                        'model_name':selected_model,
-                        'open_after': self.open_when_done.get(),
-                        'debug': self.debug_mode.get(),
-                        # 'auto_retry': self.auto_retry_failures.get()
-                        },
-                        skipkeys=True, 
-                        separators=(',', ':'))
-                    ],
-                    cwd=os.getcwd(),
-                    start_new_session=True
-                )
-            self.title("Transcriber - PLEASE DONT KILL ME - I AM WORKING! I PROMISE!")
-            while proc.poll() == None:
-                try:
-                    self.update_idletasks()
-                    time.sleep(0.1)
-                    #proc.wait(timeout=1)
-                except:
-                    pass
+                    json.dumps({**job, 'input_file': input_file}, skipkeys=True, separators=(',', ':')),
+                ],
+                cwd=os.getcwd(),
+                start_new_session=True,
+            )
+            proc.wait()
             ptime = datetime.datetime.now() - pstart
             runtime += ptime
             parsetime += d
-            estwordcount = f"{item.data.filepath.get()}.cha"
+            estwordcount = f"{input_file}.cha"
             est_word_count = 0
             if os.path.isfile(estwordcount):
                 with open(estwordcount, 'r', encoding='utf-8') as f:
                     est_word_count = sum([len([w for w in re.sub(r"^\*\w+:\s*(.*?)\s*\.\s*$", "\\1", l, count=0, flags=re.MULTILINE | re.IGNORECASE).replace(r'\s*[/]\s*',' ').split()]) for l in f.readlines() if re.match(r'^\*\w+:\s*(.*?)\s*\.\s*(?:\u0015.*?\u0015)?\s*$', l, re.MULTILINE|re.IGNORECASE)])
                     twords += est_word_count
-            print(f"Took {ptime} to transcribe ~{est_word_count} words from ({soundfile.info(item.data.filepath.get()).duration}) '{item.data.filepath.get()}' using {selected_model}")
-        try:
-            pass
-            mascot.destroy()
-        except:
-            pass
-        self.title("Transcriber")
-        # spawn_popup_activity("Transcriber", "Completed transcribing the files!")
+            print(f"Took {ptime} to transcribe ~{est_word_count} words from ({soundfile.info(input_file).duration}) '{input_file}' using {job['model_name']}")
         print("Completed transcribing the latest batch!")
-        print(f"Took {runtime} to transcribe ~{twords} words from ({parsetime}) across {len(self.data_file_entries)} files!")
-    
+        print(f"Took {runtime} to transcribe ~{twords} words from ({parsetime}) across {len(jobs)} files!")
+
+    def _poll_transcription(self, future, mascot):
+        """Poll worker completion on Tk's main thread and restore the controls."""
+        if not future.done():
+            self.after(100, self._poll_transcription, future, mascot)
+            return
+        try:
+            future.result()
+        except Exception:
+            self.show_error(*sys.exc_info())
+        finally:
+            try:
+                mascot.destroy()
+            except Exception:
+                pass
+            self.transcription_running = False
+            self.footer_button_start_transcribe.config(state='normal')
+            self.title("Transcriber")
+
     def show_about(self):
         messagebox.showinfo('About Transcribble', 'https://github.com/Noah-Jaffe/Transcribble\n\nJaffe, N., & Lurie, S. (2025). *Jaffe-Lurie Transcribble* [Computer software]. GitHub. https://github.com/Noah-Jaffe/Transcribble\n\nPlease see the README.md file for more info!\n\nUse splitfile.py to split an audio file into smaller chunks!')
     

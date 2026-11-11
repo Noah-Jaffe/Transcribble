@@ -1,6 +1,7 @@
 """GUI regressions without opening windows or contacting services."""
 import json
 import unittest
+from concurrent.futures import Future
 from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import Mock, mock_open, patch
@@ -53,6 +54,8 @@ class ModelSelectionTests(unittest.TestCase):
             language=Mock(get=Mock(return_value="eng")),
         ))
         self.app = SimpleNamespace(
+            transcription_running=False, footer_button_start_transcribe=Mock(),
+            _transcribe_batch=Gui.MainGUI._transcribe_batch, _poll_transcription=Mock(), after=Mock(),
             save_data=Mock(), footer_combobox_model_selector=Mock(get=Mock(return_value="bad/model")),
             data_file_entries=[self.entry], debug_mode=Mock(get=Mock(return_value=True)),
             open_when_done=Mock(get=Mock(return_value=False)), title=Mock(),
@@ -74,14 +77,12 @@ class ModelSelectionTests(unittest.TestCase):
             stack.enter_context(patch.object(Gui, "spawn_popup_activity", return_value=True))
             stack.enter_context(patch.object(Gui, "Mascot"))
             stack.enter_context(patch.object(Gui, "validate_language", return_value="eng"))
-            stack.enter_context(patch.object(Gui, "get_audio_file_types", return_value=["wav"]))
-            stack.enter_context(patch.object(Gui.soundfile, "info", return_value=SimpleNamespace(duration=100)))
-            stack.enter_context(patch.object(Gui.os.path, "isfile", return_value=False))
-            launch = stack.enter_context(patch.object(Gui.subprocess, "Popen"))
-            launch.return_value.poll.return_value = 0
+            executor = stack.enter_context(patch.object(Gui, "ThreadPoolExecutor"))
             Gui.MainGUI.start_transcribe(self.app)
-        args = json.loads(launch.call_args.kwargs["args"][2])
-        self.assertIsNone(args["model_name"])
+        jobs = executor.return_value.submit.call_args.args[1]
+        self.assertIsNone(jobs[0]["model_name"])
+        self.assertTrue(self.app.transcription_running)
+        self.app.after.assert_called_once()
 
     def test_recommended_model_is_selected(self):
         """A saved model is selected through the existing combobox."""
@@ -97,6 +98,41 @@ class ModelSelectionTests(unittest.TestCase):
         with patch("builtins.open", mock_open(read_data=json.dumps(cache))):
             Gui.MainGUI.load_data(app)
         selector.current.assert_called_once_with(0)
+
+
+class TranscriptionWorkerTests(unittest.TestCase):
+    def test_worker_converts_and_waits_without_tk_access(self):
+        """The background task uses plain values and waits for the child process."""
+        job = {"input_file": "audio.mp4", "num_speakers": 2, "lang": "eng",
+               "model_name": "cached/model", "open_after": False, "debug": True}
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(Gui, "get_audio_file_types", return_value=["wav"]))
+            convert = stack.enter_context(patch.object(Gui, "convert_file_to_type", return_value="audio.mp3"))
+            stack.enter_context(patch.object(Gui.soundfile, "info", return_value=SimpleNamespace(duration=100)))
+            stack.enter_context(patch.object(Gui.os.path, "isfile", return_value=False))
+            launch = stack.enter_context(patch.object(Gui.subprocess, "Popen"))
+            Gui.MainGUI._transcribe_batch([job])
+        convert.assert_called_once_with("audio.mp4", ".mp3")
+        launch.return_value.wait.assert_called_once()
+        args = json.loads(launch.call_args.kwargs["args"][2])
+        self.assertEqual(args["input_file"], "audio.mp3")
+        self.assertEqual(job["input_file"], "audio.mp4")
+
+    def test_pending_worker_returns_control_to_event_loop(self):
+        """A pending transcription schedules a callback and lets other events run."""
+        interpreter = Gui.tk.Tcl()
+        future = Future()
+        app = SimpleNamespace(after=interpreter.after, _poll_transcription=Mock())
+        mascot = Mock()
+        Gui.MainGUI._poll_transcription(app, future, mascot)
+        heartbeat = Mock()
+        interpreter.after(0, heartbeat)
+        interpreter.eval("update")
+        heartbeat.assert_called_once()
+        self.assertFalse(future.done())
+        mascot.destroy.assert_not_called()
+        for timer in interpreter.splitlist(interpreter.call("after", "info")):
+            interpreter.after_cancel(timer)
 
 
 if __name__ == "__main__":
