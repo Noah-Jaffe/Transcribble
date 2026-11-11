@@ -23,6 +23,7 @@ The following lines are all valid examples to run this file:
     python transcribe_proc.py '{"input_file": "../path/to/my/file.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 2, "lang": "eng"}' '{"input_file": "../path/to/my/file2.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 3, "lang": "spa"}'
 """
 import batchalign as ba
+from src.Whisper import WhisperEngine, WhisperUTREngine
 from tkinter import messagebox
 import os
 import subprocess
@@ -121,14 +122,15 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
     except:
         lang = 'eng'
     # transcribe
-    whisper = ba.WhisperEngine(model=model_name, lang=lang)
+    whisper = WhisperEngine(model=model_name, lang=lang)
+    log_line(f"ASR model: {whisper.model_name}")
     
     # @todo in the future enable us to use any form of AI tool
     #   this will require us to normalize the tool's output.
     # whisper = CustomAiEngine(model=model_name, lang=lang)
     
     # split by speaker
-    diarization = ba.NemoSpeakerEngine(num_speakers=num_speakers)
+    diarization = ba.NemoSpeakerEngine(num_speakers=num_speakers) if num_speakers > 1 else None
 
     # recognize pauses
     disfluency = ba.DisfluencyReplacementEngine()
@@ -137,10 +139,11 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
     retrace = ba.NgramRetraceEngine()
     
     # morphotag to get %mor %gra etc.
-    morphosyntax = ba.StanzaEngine()
+    # morphosyntax = ba.StanzaEngine()
 
     # align
-    utr = ba.WhisperUTREngine()
+    utr = WhisperUTREngine(whisper, lang=lang)
+    log_line(f"Timing recovery reuses ASR model: {whisper.model_name}")
     fa = ba.Wave2VecFAEngine()
 
     pipeline_activity = [action for action in [
@@ -148,7 +151,7 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
         # comment out each line for what you want to be run or not
         # @todo: make this a text config file?
         whisper,
-        diarization if num_speakers > 1 else None,
+        diarization,
         disfluency,
         retrace,
         # morphosyntax,

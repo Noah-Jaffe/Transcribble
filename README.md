@@ -141,7 +141,7 @@ Now that you have all of the requirements installed we will install the Transcri
         1. **If you are using CUDA**:
             - You may need to `pip uninstall torch torchaudio torchvision` before doing this next step.
             - See here to reinstall `torch` `torchaudio` and `torchvision` with your appropriate build: [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/)
-                - Example for if you have a CUDA compatible device for 12.6 you would run: `pip install torch torchvision torchaudio --no-cache -U --index-url https://download.pytorch.org/whl/cu126`
+                - Example for if you have a CUDA compatible device for 12.6 you would run: `pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --no-cache --index-url https://download.pytorch.org/whl/cu126`
                 - You may use `nvcc --version` to see your actively installed CUDA version. For example:
                     ```
                     > nvcc --version
@@ -153,7 +153,7 @@ Now that you have all of the requirements installed we will install the Transcri
                     ```
                     `12.8.93` is installed, so the `--index-url` should point to [_https://download.pytorch.org/whl/_***cu128***](https://download.pytorch.org/whl/cu128).
         1. **Otherwise if you dont have a CUDA compatible GPU, or dont know what that means, then run the next line**:
-            - `pip install torch torchaudio torchvision`
+            - `pip install torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu`
     1. Put your [Huggingface token](https://huggingface.co/docs/hub/en/security-tokens) in a file named `.hftoken`.
         - `.hftoken` only, `.hftoken.txt` will not work
             ![Your directory should look something like this](docs/hftoken.png)
@@ -241,9 +241,33 @@ De-select the Debug checkbox before clicking the start transcribe button.
 
 See function `transcribe_file` in [transcribe_proc.py](transcribe_proc.py).
 
+### Why does selecting a small Whisper model still require other downloads?
+
+The selected Whisper model supplies both transcription and utterance timing recovery,
+using one loaded instance per file. Selecting `openai/whisper-tiny.en` uses that model's
+weights, tokenizer, and generation configuration. English-only models require English
+audio. With no explicit selection, Batchalign's language default is used.
+
+The current pipeline also uses separate models for other tasks:
+
+- Utterance segmentation uses Batchalign's language-specific model when available
+  (for example, `talkbank/CHATUtterance-en` for English).
+- Word-level forced alignment uses TorchAudio's `MMS_FA` checkpoint. It is separate
+  from Whisper's utterance timing recovery, so choosing tiny Whisper does not shrink it.
+- Multiple speakers enable NeMo diarization, whose configuration names VAD,
+  speaker embedding, and MSDD models. A single-speaker run skips this engine.
+- Morphosyntax is disabled by default.
+
+Known Batchalign Whisper fine-tunes can use tokenizer/configuration files from their
+pretrained base; those files do not load a second set of ASR weights. The GUI runs a
+new process for each file, so models are loaded again between files; the libraries'
+normal artifact caches still apply. Sharing ASR with timing recovery avoids the
+previous extra Whisper model load and its potential weight download.
+
 ### Yall got some Morphosyntax?
 In function `transcribe_file` in [transcribe_proc.py](transcribe_proc.py): 
-Uncomment the line inside the `pipeline_activity` variable array:
+First uncomment `morphosyntax = ba.StanzaEngine()` above the pipeline, then
+uncomment the line inside the `pipeline_activity` variable array:
 ```
         # morphosyntax,
 ```

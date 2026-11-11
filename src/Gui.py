@@ -2,7 +2,7 @@ import datetime
 import json
 import os
 import subprocess
-import time
+from concurrent.futures import ThreadPoolExecutor
 import soundfile
 from tkinter import messagebox, filedialog
 import traceback
@@ -28,6 +28,8 @@ class MainGUI(tk.Tk):
     data_file_entries: List[tk.Frame] = []
     """List of models"""
     data_model_list: List[str] = []
+    # Prevent concurrent batches while Tk continues processing user events.
+    transcription_running: bool = False
 
     """Main header section"""
     header_frame: tk.Frame = None
@@ -65,11 +67,14 @@ class MainGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         tk.Tk.report_callback_exception = self.show_error
+        self.model_lookup_failed = False
         print("Finding models...")
         try:
             self.data_model_list = get_model_list()	# Utils.get_model_list()
-        except:
+        except Exception as exc:
             self.data_model_list = []
+            self.model_lookup_failed = True
+            print(f"Could not refresh models: {exc}", flush=True)
         print("Models found.")
         
         self.title("Transcribble")
@@ -83,6 +88,17 @@ class MainGUI(tk.Tk):
         self.create_footer()
         
         self.load_data()
+        if self.model_lookup_failed:
+            messagebox.showwarning(
+                "Online models unavailable",
+                "Could not refresh models from Hugging Face. Check your internet connection "
+                "and Hugging Face access. Saved model choices are still available.\n\n"
+                "Offline transcription requires all models used by the pipeline to be "
+                "downloaded already, including alignment and speaker diarization models. "
+                "Missing models cannot be downloaded until access is restored. Model search "
+                "and online validation are also unavailable.",
+                parent=self,
+            )
         
         self.bind("<Configure>", self.on_window_resize)
         
@@ -385,12 +401,13 @@ class MainGUI(tk.Tk):
                     models.append(model)
             # remove dupes
             self.data_model_list = models
-            self.footer_combobox_model_selector['values'] = [n for n in self.data_model_list if is_valid_model_id(n)]	# Utils.is_valid_model_id(n)]
+            # Cached choices must remain usable without a network connection.
+            self.footer_combobox_model_selector['values'] = self.data_model_list
         reccomended = [cache.get('selectedModel','openai/whisper-small.en'),'openai/whisper-small.en', 'openai/whisper-medium.en', 'openai/whisper-small', 'openai/whisper-medium.en', self.data_model_list[0] if len(self.data_model_list) else None]
         for r in reccomended:
             try:
                 idx = self.data_model_list.index(r)
-                self.dropdown_model_selector.current(idx)
+                self.footer_combobox_model_selector.current(idx)
                 break
             except:
                 pass
@@ -411,90 +428,131 @@ class MainGUI(tk.Tk):
             json.dump(jsonified, indent=2, fp=f)
     
     def start_transcribe(self):
-        """Starts the transcribe process in the background
-        
-        Returns: 
-            : @todo: pipe?
-        """
-        pass
+        """Snapshot the batch and launch blocking work outside Tk's event loop."""
+        if self.transcription_running:
+            return
         self.save_data()
         selected_model = self.footer_combobox_model_selector.get()
-        if not is_valid_model_id(selected_model):	# Utils.is_valid_model_id(selected_model):
-            if not spawn_popup_activity("Error!", f"An issue occured when we attempted to get the\n\n{self.dropdown_model_selector.get()}\n\nmodel. Please verify your huggingface token allows for read permissions of the given model.\n\nYes to continue with default model, no to abort!"):	# Utils.spawn_popup_activity("Error!", f"An issue occured when we attempted to get the\n\n{self.dropdown_model_selector.get()}\n\nmodel. Please verify your huggingface token allows for read permissions of the given model.\n\nYes to continue with default model, no to abort!"):
+        try:
+            valid_model = is_valid_model_id(selected_model)
+        except ValueError:
+            valid_model = False
+        except Exception as exc:
+            # Network/service failures do not invalidate a locally cached model.
+            print(f"Could not validate model: {exc}", flush=True)
+            messagebox.showwarning(
+                "Online validation unavailable",
+                "Could not validate the selected model with Hugging Face. Check your "
+                "internet connection and Hugging Face access. Transcription will attempt "
+                "to use the selected model. Offline use requires every pipeline model "
+                "to be downloaded already; missing models cannot be downloaded.",
+                parent=self,
+            )
+            valid_model = True
+        if not valid_model:
+            if not spawn_popup_activity(
+                "Invalid model",
+                f"Could not find or access '{selected_model}'. Verify the model ID and "
+                "your Hugging Face read permissions.\n\n"
+                "Yes to continue with the default model, no to abort!",
+            ):
                 return
-        
-        selected_model = self.footer_combobox_model_selector.get()
+            # None asks WhisperEngine to choose its default model.
+            selected_model = None
+
         if len(self.data_file_entries) == 0:
             raise Exception("Please select a file to transcribe first!")
         
-        mascot = Mascot(self, "IM TRANSCRIIIIBINNNG!!\nTRANSCRIPTION STARTED, Reccomended that you close all background apps that might hog the system resources!")
+        jobs = []
         for item in self.data_file_entries:
-            valid = validate_language(item.data.language.get())	# Utils.validate_language(item.data.language.get())
-            if valid is None:
-                spawn_popup_activity('WARNING!','Transcript process DID NOT START.\nPlease fix the errors and try again.')	# Utils.spawn_popup_activity('WARNING!','Transcript process DID NOT START.\nPlease fix the errors and try again.')
+            language = item.data.language.get()
+            if validate_language(language) is None:
+                spawn_popup_activity('WARNING!', 'Transcript process DID NOT START.\nPlease fix the errors and try again.')
                 return
+            # Read Tk variables only on the main thread. Edits affect the next run.
+            jobs.append({
+                'input_file': item.data.filepath.get(),
+                'num_speakers': item.data.numSpeakers.get(),
+                'lang': language,
+                'model_name': selected_model,
+                'open_after': self.open_when_done.get(),
+                'debug': self.debug_mode.get(),
+            })
+
+        self.transcription_running = True
+        self.footer_button_start_transcribe.config(state='disabled')
+        mascot = None
+        try:
+            mascot = Mascot(self, "IM TRANSCRIIIIBINNNG!!\nTRANSCRIPTION STARTED, Reccomended that you close all background apps that might hog the system resources!")
+            self.title("Transcriber - PLEASE DONT KILL ME - I AM WORKING! I PROMISE!")
+            executor = ThreadPoolExecutor(max_workers=1)
+            try:
+                future = executor.submit(self._transcribe_batch, jobs)
+            finally:
+                executor.shutdown(wait=False)
+            self.after(100, self._poll_transcription, future, mascot)
+        except Exception:
+            if mascot is not None:
+                mascot.close()
+            self.transcription_running = False
+            self.footer_button_start_transcribe.config(state='normal')
+            self.title("Transcriber")
+            raise
+
+    @staticmethod
+    def _transcribe_batch(jobs):
+        """Convert and transcribe a snapshot of the jobs without touching Tk."""
         parsetime = 0
         twords = 0
         runtime = datetime.timedelta(0)
-        for item in self.data_file_entries:
-            # needs conversion?
-            if not (item.data.filepath.get().split('.')[-1] in get_audio_file_types()):	# Utils.get_audio_file_types()):
-                # looks like it probably needs conversion
-                ntype = ".mp3"
-                print(f"Converting {item.data.filepath.get()} to mp3 type so that it can be transcribed!")
-                item.data.filepath.set(convert_file_to_type(item.data.filepath.get(), ntype))	# Utils.convert_file_to_type(item.data.filepath.get(), ntype)
-                print(f"Convertion completed! Audio file can be found {item.data.filepath.get()}")
-            
+        for job in jobs:
+            input_file = job['input_file']
+            if input_file.split('.')[-1].lower() not in get_audio_file_types():
+                print(f"Converting {input_file} to mp3 type so that it can be transcribed!")
+                input_file = convert_file_to_type(input_file, ".mp3")
+                print(f"Conversion completed! Audio file can be found {input_file}")
+
             pstart = datetime.datetime.now()
-            d = soundfile.info(item.data.filepath.get()).duration
-            print(f"Starting timer for ({d}) '{item.data.filepath.get()}'")
+            d = soundfile.info(input_file).duration
+            print(f"Starting timer for ({d}) '{input_file}'")
             proc = subprocess.Popen(
                 args=[
                     sys.executable,
                     TRANSCRIBE_SUBPROC_FILENAME,
-                    json.dumps({
-                        'input_file': item.data.filepath.get(), 
-                        'num_speakers': item.data.numSpeakers.get(), 
-                        'lang': item.data.language.get(), 
-                        'model_name':selected_model,
-                        'open_after': self.open_when_done.get(),
-                        'debug': self.debug_mode.get(),
-                        # 'auto_retry': self.auto_retry_failures.get()
-                        },
-                        skipkeys=True, 
-                        separators=(',', ':'))
-                    ],
-                    cwd=os.getcwd(),
-                    start_new_session=True
-                )
-            self.title("Transcriber - PLEASE DONT KILL ME - I AM WORKING! I PROMISE!")
-            while proc.poll() == None:
-                try:
-                    self.update_idletasks()
-                    time.sleep(0.1)
-                    #proc.wait(timeout=1)
-                except:
-                    pass
+                    json.dumps({**job, 'input_file': input_file}, skipkeys=True, separators=(',', ':')),
+                ],
+                cwd=os.getcwd(),
+                start_new_session=True,
+            )
+            proc.wait()
             ptime = datetime.datetime.now() - pstart
             runtime += ptime
             parsetime += d
-            estwordcount = f"{item.data.filepath.get()}.cha"
+            estwordcount = f"{input_file}.cha"
             est_word_count = 0
             if os.path.isfile(estwordcount):
                 with open(estwordcount, 'r', encoding='utf-8') as f:
                     est_word_count = sum([len([w for w in re.sub(r"^\*\w+:\s*(.*?)\s*\.\s*$", "\\1", l, count=0, flags=re.MULTILINE | re.IGNORECASE).replace(r'\s*[/]\s*',' ').split()]) for l in f.readlines() if re.match(r'^\*\w+:\s*(.*?)\s*\.\s*(?:\u0015.*?\u0015)?\s*$', l, re.MULTILINE|re.IGNORECASE)])
                     twords += est_word_count
-            print(f"Took {ptime} to transcribe ~{est_word_count} words from ({soundfile.info(item.data.filepath.get()).duration}) '{item.data.filepath.get()}' using {selected_model}")
-        try:
-            pass
-            mascot.destroy()
-        except:
-            pass
-        self.title("Transcriber")
-        # spawn_popup_activity("Transcriber", "Completed transcribing the files!")
+            print(f"Took {ptime} to transcribe ~{est_word_count} words from ({soundfile.info(input_file).duration}) '{input_file}' using {job['model_name']}")
         print("Completed transcribing the latest batch!")
-        print(f"Took {runtime} to transcribe ~{twords} words from ({parsetime}) across {len(self.data_file_entries)} files!")
-    
+        print(f"Took {runtime} to transcribe ~{twords} words from ({parsetime}) across {len(jobs)} files!")
+
+    def _poll_transcription(self, future, mascot):
+        """Poll worker completion on Tk's main thread and restore the controls."""
+        if not future.done():
+            self.after(100, self._poll_transcription, future, mascot)
+            return
+        try:
+            future.result()
+        except Exception:
+            self.show_error(*sys.exc_info())
+        finally:
+            mascot.close()
+            self.transcription_running = False
+            self.footer_button_start_transcribe.config(state='normal')
+            self.title("Transcriber")
+
     def show_about(self):
         messagebox.showinfo('About Transcribble', 'https://github.com/Noah-Jaffe/Transcribble\n\nJaffe, N., & Lurie, S. (2025). *Jaffe-Lurie Transcribble* [Computer software]. GitHub. https://github.com/Noah-Jaffe/Transcribble\n\nPlease see the README.md file for more info!\n\nUse splitfile.py to split an audio file into smaller chunks!')
     

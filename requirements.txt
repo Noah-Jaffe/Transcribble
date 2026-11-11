@@ -22,6 +22,9 @@
 
 #### pip requirements - minimum - see explicit-requirements.txt for full list ####
 
+# praatio (via batchalign) requires pkg_resources, removed in setuptools 82.
+setuptools<81
+
 batchalign==0.7.21.post11
 
 ffmpeg-python==0.2.0
@@ -30,7 +33,9 @@ nemo-toolkit==2.4.1
 nemo-toolkit[asr]==2.4.1
 
 
+# pyannote.audio 3.x requires audio APIs removed in torchaudio 2.9.
+# Keep torch and torchaudio paired; install CUDA builds using the README instructions.
 #### dont install torch, torchvision, and torchaudio by default
-# torch
-# torchvision
-# torchaudio
+# torch==2.8.0
+# torchaudio==2.8.0
+# torchvision # this one might not be needed

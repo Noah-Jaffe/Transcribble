@@ -6,19 +6,14 @@ from tkinter import filedialog, messagebox, ttk
 import ffmpeg
 
 def get_audio_length(filepath):
-    """Return length of audio in seconds"""
-    try:
-        probe = ffmpeg.probe(filepath)
-        duration = float(probe['format']['duration'])
-        return int(duration)
-    except:
-        pass
-    return None
+    """Return the full duration; let callers report probe failures to the user."""
+    probe = ffmpeg.probe(filepath)
+    return float(probe['format']['duration'])
 
 def split_audio(filepath, num_parts, overlap=2):
     """Split audio file into parts with given overlap."""
     length = get_audio_length(filepath)
-    if not length or num_parts < 2 or num_parts > length:
+    if not length or num_parts < 2 or num_parts > length or overlap < 0:
         return False
 
     part_duration = length / num_parts
@@ -27,21 +22,17 @@ def split_audio(filepath, num_parts, overlap=2):
     output_dir = os.path.dirname(filepath)
 
     for i in range(num_parts):
-        start_time = i * part_duration
-        if i > 0:
-            start_time = max(0, start_time - overlap)
-        duration = part_duration
-        if i < num_parts - 1:
-            duration += overlap
-        if start_time + duration > length:
-            duration = length - start_time
+        # Extend both sides of interior boundaries, keeping the full final tail.
+        start_time = max(0, i * part_duration - overlap)
+        end_time = length if i == num_parts - 1 else min(length, (i + 1) * part_duration + overlap)
+        duration = end_time - start_time
 
         output_file = os.path.join(output_dir, f"{basename}.{i+1}{ext}")
         subprocess.run([
             "ffmpeg", "-y", "-i", filepath,
             "-ss", str(start_time), "-t", str(duration),
             "-c", "copy", output_file
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=True)
     return True
 
 def process_files():
@@ -55,8 +46,21 @@ def process_files():
             messagebox.showerror("Invalid Input", f"Invalid numbers for {os.path.basename(filepath)}")
             return
 
-        if not split_audio(filepath, num_parts, overlap):
-            messagebox.showerror("Error", f"Failed to split {os.path.basename(filepath)}")
+        try:
+            if not split_audio(filepath, num_parts, overlap):
+                messagebox.showerror(
+                    "Invalid Input",
+                    f"Cannot split {os.path.basename(filepath)}. Check that the file has a "
+                    "positive duration, the part count is at least 2 and no greater than "
+                    "the duration in seconds, and overlap is nonnegative.",
+                )
+                return
+        except (OSError, ValueError, ffmpeg.Error, subprocess.CalledProcessError) as exc:
+            # Probe errors contain bytes; subprocess errors contain text.
+            details = getattr(exc, 'stderr', None) or str(exc)
+            if isinstance(details, bytes):
+                details = details.decode('utf-8', errors='replace')
+            messagebox.showerror("Split failed", f"Failed to split {os.path.basename(filepath)}:\n\n{details}")
             return
 
     messagebox.showinfo("Done", "All files split successfully.")
@@ -82,7 +86,11 @@ def select_files():
     ttk.Label(table_frame, text="Overlap (s)", font=("TkDefaultFont", 10, "bold")).grid(row=0, column=3, padx=5)
 
     for i, filepath in enumerate(files, start=1):
-        length = get_audio_length(filepath)
+        try:
+            length = get_audio_length(filepath)
+        except (OSError, ValueError, ffmpeg.Error):
+            # Show the full probe error if the user attempts to split this file.
+            length = None
         if not length:
             length = "?"
         ttk.Label(table_frame, text=os.path.basename(filepath)).grid(row=i, column=0, sticky="w", padx=5)
@@ -98,32 +106,34 @@ def select_files():
 
         rows.append((filepath, parts_entry, overlap_entry))
 
-# --- Main GUI ---
-root = tk.Tk()
-root.title("Audio Splitter with Overlap")
+# Keep imports side-effect free so the splitting logic can be used independently.
+if __name__ == "__main__":
+    # --- Main GUI ---
+    root = tk.Tk()
+    root.title("Audio Splitter with Overlap")
 
-rows = []
+    rows = []
 
-ttk.Button(root, text="Select Files", command=select_files).pack(pady=5)
+    ttk.Button(root, text="Select Files", command=select_files).pack(pady=5)
 
-canvas = tk.Canvas(root)
-scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
-scrollable_frame = ttk.Frame(canvas)
+    canvas = tk.Canvas(root)
+    scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
 
-scrollable_frame.bind(
-    "<Configure>",
-    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-)
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
 
-canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
 
-table_frame = ttk.Frame(scrollable_frame)
-table_frame.pack(fill="x", expand=True)
+    table_frame = ttk.Frame(scrollable_frame)
+    table_frame.pack(fill="x", expand=True)
 
-canvas.pack(side="left", fill="both", expand=True)
-scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
 
-ttk.Button(root, text="Split Files", command=process_files).pack(pady=5)
+    ttk.Button(root, text="Split Files", command=process_files).pack(pady=5)
 
-root.mainloop()
+    root.mainloop()
