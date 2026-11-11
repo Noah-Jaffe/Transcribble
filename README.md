@@ -137,7 +137,6 @@ Now that you have all of the requirements installed we will install the Transcri
         - If that fails, [report the issue to the maintainer or your point of contact](https://github.com/Noah-Jaffe/Transcribble/issues)
         - The only requirements not in the txt files are `torch` `torchaudio` and `torchvision` (continue reading...)
     1. Install requirements not in the requirements.txt
-    1. Select the appropriate PyTorch build
 
         1. **If you are using CUDA**:
             - You may need to `pip uninstall torch torchaudio torchvision` before doing this next step.
