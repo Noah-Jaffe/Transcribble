@@ -10,7 +10,7 @@ def get_audio_length(filepath):
     try:
         probe = ffmpeg.probe(filepath)
         duration = float(probe['format']['duration'])
-        return int(duration)
+        return duration
     except:
         pass
     return None
@@ -18,7 +18,7 @@ def get_audio_length(filepath):
 def split_audio(filepath, num_parts, overlap=2):
     """Split audio file into parts with given overlap."""
     length = get_audio_length(filepath)
-    if not length or num_parts < 2 or num_parts > length:
+    if not length or num_parts < 2 or num_parts > length or overlap < 0:
         return False
 
     part_duration = length / num_parts
@@ -27,14 +27,10 @@ def split_audio(filepath, num_parts, overlap=2):
     output_dir = os.path.dirname(filepath)
 
     for i in range(num_parts):
-        start_time = i * part_duration
-        if i > 0:
-            start_time = max(0, start_time - overlap)
-        duration = part_duration
-        if i < num_parts - 1:
-            duration += overlap
-        if start_time + duration > length:
-            duration = length - start_time
+        # Extend both sides of interior boundaries, keeping the full final tail.
+        start_time = max(0, i * part_duration - overlap)
+        end_time = length if i == num_parts - 1 else min(length, (i + 1) * part_duration + overlap)
+        duration = end_time - start_time
 
         output_file = os.path.join(output_dir, f"{basename}.{i+1}{ext}")
         subprocess.run([
@@ -98,32 +94,34 @@ def select_files():
 
         rows.append((filepath, parts_entry, overlap_entry))
 
-# --- Main GUI ---
-root = tk.Tk()
-root.title("Audio Splitter with Overlap")
+# Keep imports side-effect free so the splitting logic can be used independently.
+if __name__ == "__main__":
+    # --- Main GUI ---
+    root = tk.Tk()
+    root.title("Audio Splitter with Overlap")
 
-rows = []
+    rows = []
 
-ttk.Button(root, text="Select Files", command=select_files).pack(pady=5)
+    ttk.Button(root, text="Select Files", command=select_files).pack(pady=5)
 
-canvas = tk.Canvas(root)
-scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
-scrollable_frame = ttk.Frame(canvas)
+    canvas = tk.Canvas(root)
+    scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
 
-scrollable_frame.bind(
-    "<Configure>",
-    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-)
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
 
-canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
 
-table_frame = ttk.Frame(scrollable_frame)
-table_frame.pack(fill="x", expand=True)
+    table_frame = ttk.Frame(scrollable_frame)
+    table_frame.pack(fill="x", expand=True)
 
-canvas.pack(side="left", fill="both", expand=True)
-scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
 
-ttk.Button(root, text="Split Files", command=process_files).pack(pady=5)
+    ttk.Button(root, text="Split Files", command=process_files).pack(pady=5)
 
-root.mainloop()
+    root.mainloop()
