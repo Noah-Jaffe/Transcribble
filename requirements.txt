@@ -22,6 +22,9 @@
 
 #### pip requirements - minimum - see explicit-requirements.txt for full list ####
 
+# praatio (via batchalign) requires pkg_resources, removed in setuptools 82.
+setuptools<82
+
 batchalign==0.7.21.post11
 
 ffmpeg-python==0.2.0
