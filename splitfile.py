@@ -6,14 +6,9 @@ from tkinter import filedialog, messagebox, ttk
 import ffmpeg
 
 def get_audio_length(filepath):
-    """Return length of audio in seconds"""
-    try:
-        probe = ffmpeg.probe(filepath)
-        duration = float(probe['format']['duration'])
-        return duration
-    except:
-        pass
-    return None
+    """Return the full duration; let callers report probe failures to the user."""
+    probe = ffmpeg.probe(filepath)
+    return float(probe['format']['duration'])
 
 def split_audio(filepath, num_parts, overlap=2):
     """Split audio file into parts with given overlap."""
@@ -37,7 +32,7 @@ def split_audio(filepath, num_parts, overlap=2):
             "ffmpeg", "-y", "-i", filepath,
             "-ss", str(start_time), "-t", str(duration),
             "-c", "copy", output_file
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=True)
     return True
 
 def process_files():
@@ -51,8 +46,21 @@ def process_files():
             messagebox.showerror("Invalid Input", f"Invalid numbers for {os.path.basename(filepath)}")
             return
 
-        if not split_audio(filepath, num_parts, overlap):
-            messagebox.showerror("Error", f"Failed to split {os.path.basename(filepath)}")
+        try:
+            if not split_audio(filepath, num_parts, overlap):
+                messagebox.showerror(
+                    "Invalid Input",
+                    f"Cannot split {os.path.basename(filepath)}. Check that the file has a "
+                    "positive duration, the part count is at least 2 and no greater than "
+                    "the duration in seconds, and overlap is nonnegative.",
+                )
+                return
+        except (OSError, ValueError, ffmpeg.Error, subprocess.CalledProcessError) as exc:
+            # Probe errors contain bytes; subprocess errors contain text.
+            details = getattr(exc, 'stderr', None) or str(exc)
+            if isinstance(details, bytes):
+                details = details.decode('utf-8', errors='replace')
+            messagebox.showerror("Split failed", f"Failed to split {os.path.basename(filepath)}:\n\n{details}")
             return
 
     messagebox.showinfo("Done", "All files split successfully.")
@@ -78,7 +86,11 @@ def select_files():
     ttk.Label(table_frame, text="Overlap (s)", font=("TkDefaultFont", 10, "bold")).grid(row=0, column=3, padx=5)
 
     for i, filepath in enumerate(files, start=1):
-        length = get_audio_length(filepath)
+        try:
+            length = get_audio_length(filepath)
+        except (OSError, ValueError, ffmpeg.Error):
+            # Show the full probe error if the user attempts to split this file.
+            length = None
         if not length:
             length = "?"
         ttk.Label(table_frame, text=os.path.basename(filepath)).grid(row=i, column=0, sticky="w", padx=5)

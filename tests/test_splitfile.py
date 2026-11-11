@@ -1,6 +1,7 @@
 """Audio splitting regressions without opening the splitter window."""
+import subprocess
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import splitfile
 
@@ -31,6 +32,42 @@ class SplitCoverageTests(unittest.TestCase):
                     self.assertLessEqual(current[0], previous[1])
                     if overlap:
                         self.assertLess(current[0], previous[1])
+
+
+class SplitFailureTests(unittest.TestCase):
+    def test_ffmpeg_failure_aborts_remaining_parts(self):
+        """A failed segment must not be treated as a successful split."""
+        error = subprocess.CalledProcessError(1, "ffmpeg", stderr="output disk is full")
+        with patch.object(splitfile, "get_audio_length", return_value=100), patch.object(
+            splitfile.subprocess, "run", side_effect=error
+        ) as run:
+            with self.assertRaises(subprocess.CalledProcessError):
+                splitfile.split_audio("audio.wav", 3)
+        run.assert_called_once()
+        self.assertTrue(run.call_args.kwargs["check"])
+
+    def test_split_errors_are_shown_without_success_dialog(self):
+        """Show encoder, probe, and missing executable errors at the GUI boundary."""
+        errors = (
+            subprocess.CalledProcessError(1, "ffmpeg", stderr="output disk is full"),
+            splitfile.ffmpeg.Error("ffprobe", b"", b"invalid audio data"),
+            FileNotFoundError("ffmpeg executable not found"),
+        )
+        for error in errors:
+            with self.subTest(error=type(error).__name__), patch.object(
+                splitfile, "rows", [("audio.wav", Mock(get=Mock(return_value="2")),
+                                     Mock(get=Mock(return_value="2")))], create=True
+            ), patch.object(splitfile, "split_audio", side_effect=error), patch.object(
+                splitfile.messagebox, "showerror"
+            ) as showerror, patch.object(splitfile.messagebox, "showinfo") as success:
+                splitfile.process_files()
+                showerror.assert_called_once()
+                details = getattr(error, "stderr", None) or str(error)
+                if isinstance(details, bytes):
+                    details = details.decode("utf-8")
+                self.assertIn(details, showerror.call_args.args[1])
+                self.assertIn("audio.wav", showerror.call_args.args[1])
+                success.assert_not_called()
 
 
 if __name__ == "__main__":
