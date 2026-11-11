@@ -23,6 +23,7 @@ The following lines are all valid examples to run this file:
     python transcribe_proc.py '{"input_file": "../path/to/my/file.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 2, "lang": "eng"}' '{"input_file": "../path/to/my/file2.mp3", "model_name": "openai/whisper-tiny", "num_speakers": 3, "lang": "spa"}'
 """
 import batchalign as ba
+from src.Whisper import WhisperEngine
 from tkinter import messagebox
 import os
 import subprocess
@@ -121,7 +122,8 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
     except:
         lang = 'eng'
     # transcribe
-    whisper = ba.WhisperEngine(model=model_name, lang=lang)
+    whisper = WhisperEngine(model=model_name, lang=lang)
+    log_line(f"ASR model: {whisper.model_name}")
     
     # @todo in the future enable us to use any form of AI tool
     #   this will require us to normalize the tool's output.
