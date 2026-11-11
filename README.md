@@ -20,6 +20,8 @@
     - For the AI model download - on the first time you use a model
 
 1. **Python 3.11+**:
+    - Check to see if you have python installed by running `python --version` in your command line terminal.
+        - If the result reads more like `Python 3.11.0` (or some higher version number), then you can skip to the next requirement.
     - Download and install python here: [https://www.python.org/downloads/](https://www.python.org/downloads/)
     - _Tested on 3.11, 3.12, and 3.13_
     - If using the installer, use the following configuration options:
@@ -93,6 +95,7 @@
     - __NOTE: You will need a NVIDIA GPU for this.__
     - [Install CUDA](https://docs.nvidia.com/cuda/cuda-quick-start-guide/)
     - If this sounds like gibberish to you, it is safe to skip this step. Your AI models will run off of your CPU.
+    - It is reccomended to install CUDA, and each device has its own unique installation and compatibility process, so you are on your own to figure out if you can, and how to install CUDA.
 
 1. **Python's tkinter** needs to be installed
     - If you installed python with the installer and selected the tk/tcl and IDLE options, you should have this step completed already.
@@ -139,7 +142,17 @@ Now that you have all of the requirements installed we will install the Transcri
             - You may need to `pip uninstall torch torchaudio torchvision` before doing this next step.
             - See here to reinstall `torch` `torchaudio` and `torchvision` with your appropriate build: [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/)
                 - Example for if you have a CUDA compatible device for 12.6 you would run: `pip install torch torchvision torchaudio --no-cache -U --index-url https://download.pytorch.org/whl/cu126`
-        1. **Otherwise if you dont have a CUDA compatible GPU or dont know what that means then run the next line**:
+                - You may use `nvcc --version` to see your actively installed CUDA version. For example:
+                    ```
+                    > nvcc --version
+                    nvcc: NVIDIA (R) Cuda compiler driver
+                    Copyright (c) 2005-2025 NVIDIA Corporation
+                    Built on Fri_Feb_21_20:42:46_Pacific_Standard_Time_2025
+                    Cuda compilation tools, release 12.8, V12.8.93
+                    Build cuda_12.8.r12.8/compiler.35583870_0
+                    ```
+                    `12.8.93` is installed, so the `--index-url` should point to [_https://download.pytorch.org/whl/_***cu128***](https://download.pytorch.org/whl/cu128).
+        1. **Otherwise if you dont have a CUDA compatible GPU, or dont know what that means, then run the next line**:
             - `pip install torch torchaudio torchvision`
     1. Put your [Huggingface token](https://huggingface.co/docs/hub/en/security-tokens) in a file named `.hftoken`.
         - `.hftoken` only, `.hftoken.txt` will not work
@@ -154,8 +167,8 @@ Now that you have all of the requirements installed we will install the Transcri
             Save anywhere as "`Transcribe.ps1`"
             ```sh
             cd ~/Documents/Transcribble
-            # if you used a virtual environment uncomment the next line (remove the #)
-            #./venv/Scripts/activate
+            # if you did not use a virtual environment, comment the next line out (add a # to the start of the line)
+            ./.venv/Scripts/activate
             python main.py
             ```
         - Example for Mac/Linux
@@ -163,8 +176,8 @@ Now that you have all of the requirements installed we will install the Transcri
             ```
             #!/bin/bash
             cd ~/Documents/Transcribble
-            # if you used a virtual environment uncomment the next line (remove the #)
-            # source .venv/bin/activate
+            # if you did not use a virtual environment, comment the next line out (add a # to the start of the line)
+            source .venv/bin/activate
             python main.py
             ```
             _You may need to run `chmod +x Transcriber.sh` on the new .sh file to give it permissions to execute_
