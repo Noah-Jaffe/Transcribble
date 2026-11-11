@@ -405,7 +405,7 @@ class MainGUI(tk.Tk):
         for r in reccomended:
             try:
                 idx = self.data_model_list.index(r)
-                self.dropdown_model_selector.current(idx)
+                self.footer_combobox_model_selector.current(idx)
                 break
             except:
                 pass
@@ -436,6 +436,8 @@ class MainGUI(tk.Tk):
         selected_model = self.footer_combobox_model_selector.get()
         try:
             valid_model = is_valid_model_id(selected_model)
+        except ValueError:
+            valid_model = False
         except Exception as exc:
             # Network/service failures do not invalidate a locally cached model.
             print(f"Could not validate model: {exc}", flush=True)
@@ -449,10 +451,16 @@ class MainGUI(tk.Tk):
             )
             valid_model = True
         if not valid_model:
-            if not spawn_popup_activity("Error!", f"An issue occured when we attempted to get the\n\n{self.dropdown_model_selector.get()}\n\nmodel. Please verify your huggingface token allows for read permissions of the given model.\n\nYes to continue with default model, no to abort!"):	# Utils.spawn_popup_activity("Error!", f"An issue occured when we attempted to get the\n\n{self.dropdown_model_selector.get()}\n\nmodel. Please verify your huggingface token allows for read permissions of the given model.\n\nYes to continue with default model, no to abort!"):
+            if not spawn_popup_activity(
+                "Invalid model",
+                f"Could not find or access '{selected_model}'. Verify the model ID and "
+                "your Hugging Face read permissions.\n\n"
+                "Yes to continue with the default model, no to abort!",
+            ):
                 return
-        
-        selected_model = self.footer_combobox_model_selector.get()
+            # None asks WhisperEngine to choose its default model.
+            selected_model = None
+
         if len(self.data_file_entries) == 0:
             raise Exception("Please select a file to transcribe first!")
         
