@@ -65,11 +65,14 @@ class MainGUI(tk.Tk):
     def __init__(self):
         super().__init__()
         tk.Tk.report_callback_exception = self.show_error
+        self.model_lookup_failed = False
         print("Finding models...")
         try:
             self.data_model_list = get_model_list()	# Utils.get_model_list()
-        except:
+        except Exception as exc:
             self.data_model_list = []
+            self.model_lookup_failed = True
+            print(f"Could not refresh models: {exc}", flush=True)
         print("Models found.")
         
         self.title("Transcribble")
@@ -83,6 +86,17 @@ class MainGUI(tk.Tk):
         self.create_footer()
         
         self.load_data()
+        if self.model_lookup_failed:
+            messagebox.showwarning(
+                "Online models unavailable",
+                "Could not refresh models from Hugging Face. Check your internet connection "
+                "and Hugging Face access. Saved model choices are still available.\n\n"
+                "Offline transcription requires all models used by the pipeline to be "
+                "downloaded already, including alignment and speaker diarization models. "
+                "Missing models cannot be downloaded until access is restored. Model search "
+                "and online validation are also unavailable.",
+                parent=self,
+            )
         
         self.bind("<Configure>", self.on_window_resize)
         
@@ -385,7 +399,8 @@ class MainGUI(tk.Tk):
                     models.append(model)
             # remove dupes
             self.data_model_list = models
-            self.footer_combobox_model_selector['values'] = [n for n in self.data_model_list if is_valid_model_id(n)]	# Utils.is_valid_model_id(n)]
+            # Cached choices must remain usable without a network connection.
+            self.footer_combobox_model_selector['values'] = self.data_model_list
         reccomended = [cache.get('selectedModel','openai/whisper-small.en'),'openai/whisper-small.en', 'openai/whisper-medium.en', 'openai/whisper-small', 'openai/whisper-medium.en', self.data_model_list[0] if len(self.data_model_list) else None]
         for r in reccomended:
             try:
@@ -419,7 +434,21 @@ class MainGUI(tk.Tk):
         pass
         self.save_data()
         selected_model = self.footer_combobox_model_selector.get()
-        if not is_valid_model_id(selected_model):	# Utils.is_valid_model_id(selected_model):
+        try:
+            valid_model = is_valid_model_id(selected_model)
+        except Exception as exc:
+            # Network/service failures do not invalidate a locally cached model.
+            print(f"Could not validate model: {exc}", flush=True)
+            messagebox.showwarning(
+                "Online validation unavailable",
+                "Could not validate the selected model with Hugging Face. Check your "
+                "internet connection and Hugging Face access. Transcription will attempt "
+                "to use the selected model. Offline use requires every pipeline model "
+                "to be downloaded already; missing models cannot be downloaded.",
+                parent=self,
+            )
+            valid_model = True
+        if not valid_model:
             if not spawn_popup_activity("Error!", f"An issue occured when we attempted to get the\n\n{self.dropdown_model_selector.get()}\n\nmodel. Please verify your huggingface token allows for read permissions of the given model.\n\nYes to continue with default model, no to abort!"):	# Utils.spawn_popup_activity("Error!", f"An issue occured when we attempted to get the\n\n{self.dropdown_model_selector.get()}\n\nmodel. Please verify your huggingface token allows for read permissions of the given model.\n\nYes to continue with default model, no to abort!"):
                 return
         

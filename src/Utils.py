@@ -67,7 +67,8 @@ def get_hf_search_query(**kwargs):
         },
         headers={
             "Authorization":f"Bearer {hf_token}"
-        })
+        },
+        timeout=10)
     if response.status_code == 401:
         spawn_popup_activity("Error!", f"Invalid huggingface token!\nTo use the search feature, you must have a file named\n\t'{HF_TOKEN_FILENAME}'\nthat contains your huggingface token!\nSee here for details:\n\nhttps://huggingface.co/docs/hub/en/security-tokens")
     return response.json()
