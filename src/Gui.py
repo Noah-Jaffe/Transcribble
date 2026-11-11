@@ -492,6 +492,8 @@ class MainGUI(tk.Tk):
                 executor.shutdown(wait=False)
             self.after(100, self._poll_transcription, future, mascot)
         except Exception:
+            if mascot is not None:
+                mascot.close()
             self.transcription_running = False
             self.footer_button_start_transcribe.config(state='normal')
             self.title("Transcriber")
@@ -546,10 +548,7 @@ class MainGUI(tk.Tk):
         except Exception:
             self.show_error(*sys.exc_info())
         finally:
-            try:
-                mascot.destroy()
-            except Exception:
-                pass
+            mascot.close()
             self.transcription_running = False
             self.footer_button_start_transcribe.config(state='normal')
             self.title("Transcriber")

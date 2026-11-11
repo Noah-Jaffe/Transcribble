@@ -84,6 +84,25 @@ class ModelSelectionTests(unittest.TestCase):
         self.assertTrue(self.app.transcription_running)
         self.app.after.assert_called_once()
 
+    def test_launch_failure_closes_popup_and_restores_controls(self):
+        """A worker launch error must not leave the popup or busy state behind."""
+        with patch.object(Gui, "is_valid_model_id", return_value=True), patch.object(
+            Gui, "validate_language", return_value="eng"
+        ), patch.object(Gui, "Mascot") as mascot, patch.object(
+            Gui, "ThreadPoolExecutor", side_effect=RuntimeError("cannot start worker")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "cannot start worker"):
+                Gui.MainGUI.start_transcribe(self.app)
+        mascot.return_value.close.assert_called_once()
+        self.assertFalse(self.app.transcription_running)
+        self.app.footer_button_start_transcribe.config.assert_called_with(state="normal")
+
+    def test_active_batch_cannot_be_started_again(self):
+        """Returning control to Tk must not allow duplicate transcription batches."""
+        self.app.transcription_running = True
+        Gui.MainGUI.start_transcribe(self.app)
+        self.app.save_data.assert_not_called()
+
     def test_recommended_model_is_selected(self):
         """A saved model is selected through the existing combobox."""
         selector = Mock()
@@ -130,9 +149,49 @@ class TranscriptionWorkerTests(unittest.TestCase):
         interpreter.eval("update")
         heartbeat.assert_called_once()
         self.assertFalse(future.done())
-        mascot.destroy.assert_not_called()
+        mascot.close.assert_not_called()
         for timer in interpreter.splitlist(interpreter.call("after", "info")):
             interpreter.after_cancel(timer)
+
+
+class PopupCleanupTests(unittest.TestCase):
+    def test_popup_closes_on_success_and_failure(self):
+        """Completion restores UI controls and closes the mascot in either case."""
+        for error in (None, RuntimeError("conversion failed")):
+            with self.subTest(error=error):
+                future = Future()
+                if error is None:
+                    future.set_result(None)
+                else:
+                    future.set_exception(error)
+                app = SimpleNamespace(
+                    show_error=Mock(), footer_button_start_transcribe=Mock(),
+                    transcription_running=True, title=Mock(), after=Mock(),
+                )
+                mascot = Mock(spec=Gui.Mascot)
+                Gui.MainGUI._poll_transcription(app, future, mascot)
+                mascot.close.assert_called_once()
+                self.assertFalse(app.transcription_running)
+                app.footer_button_start_transcribe.config.assert_called_once_with(state="normal")
+                app.after.assert_not_called()
+                if error:
+                    self.assertIs(app.show_error.call_args.args[1], error)
+                else:
+                    app.show_error.assert_not_called()
+
+    def test_close_tolerates_already_closed_windows(self):
+        """Cleanup also works when the popup or root has been closed manually."""
+        mascot = Gui.Mascot.__new__(Gui.Mascot)
+        mascot.popup = Mock()
+        mascot.popup.winfo_exists.return_value = True
+        mascot.close()
+        mascot.popup.destroy.assert_called_once()
+        mascot.popup.reset_mock()
+        mascot.popup.winfo_exists.return_value = False
+        mascot.close()
+        mascot.popup.destroy.assert_not_called()
+        mascot.popup.winfo_exists.side_effect = Gui.tk.TclError("application destroyed")
+        mascot.close()
 
 
 if __name__ == "__main__":

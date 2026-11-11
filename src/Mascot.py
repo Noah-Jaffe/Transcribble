@@ -83,7 +83,13 @@ class Mascot():
         self.popup.wait_visibility()
     
     def close(self):
-        self.popup.destroy()
+        """Close the popup, including when it or its parent was already closed."""
+        try:
+            if self.popup.winfo_exists():
+                self.popup.destroy()
+        except tk.TclError:
+            # Closing the root first also destroys the popup's Tcl interpreter.
+            pass
     
     def mainloop(self):
         self.popup.mainloop()
