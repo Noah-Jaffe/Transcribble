@@ -135,13 +135,13 @@ Now that you have all of the requirements installed we will install the Transcri
     1. Install python packages with the command: <a id="pip install"></a>`pip install -r requirements.txt`
         - If the pip install fails try installing each package one at a time, by line as it is written in the [requirements.txt](requirements.txt) file.
         - If that fails, [report the issue to the maintainer or your point of contact](https://github.com/Noah-Jaffe/Transcribble/issues)
-        - The only requirements not in the txt files are `torch` `torchaudio` and `torchvision` (continue reading...)
-    1. Install requirements not in the requirements.txt
+        - `torch` and `torchaudio` are pinned to 2.8.0 because Pyannote 3.x requires audio APIs removed in TorchAudio 2.9. Keep these versions when selecting a CPU or CUDA build below.
+    1. Select the appropriate PyTorch build
 
         1. **If you are using CUDA**:
             - You may need to `pip uninstall torch torchaudio torchvision` before doing this next step.
             - See here to reinstall `torch` `torchaudio` and `torchvision` with your appropriate build: [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/)
-                - Example for if you have a CUDA compatible device for 12.6 you would run: `pip install torch torchvision torchaudio --no-cache -U --index-url https://download.pytorch.org/whl/cu126`
+                - Example for if you have a CUDA compatible device for 12.6 you would run: `pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --no-cache --index-url https://download.pytorch.org/whl/cu126`
                 - You may use `nvcc --version` to see your actively installed CUDA version. For example:
                     ```
                     > nvcc --version
@@ -153,7 +153,7 @@ Now that you have all of the requirements installed we will install the Transcri
                     ```
                     `12.8.93` is installed, so the `--index-url` should point to [_https://download.pytorch.org/whl/_***cu128***](https://download.pytorch.org/whl/cu128).
         1. **Otherwise if you dont have a CUDA compatible GPU, or dont know what that means, then run the next line**:
-            - `pip install torch torchaudio torchvision`
+            - `pip install torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu`
     1. Put your [Huggingface token](https://huggingface.co/docs/hub/en/security-tokens) in a file named `.hftoken`.
         - `.hftoken` only, `.hftoken.txt` will not work
             ![Your directory should look something like this](docs/hftoken.png)
