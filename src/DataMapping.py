@@ -110,7 +110,7 @@ class DataMapping(object):
             TypeError: if data in this object cannot be serialized with json.
         
         Returns:
-            str: The file path we wrote to.
+            Path: The file path we wrote to.
         """
         # MAGIC NUMBER [max file name length]: Windows (255), Mac (1023)
         MAX_FILE_NAME_LENGTH = 250
@@ -118,11 +118,10 @@ class DataMapping(object):
         if not fp.parent.exists():
             fp.parent.mkdir(exist_ok=True, parents=True)
 
-        name, ext = fp.parts[-1].rsplit('.', 1)
         if not allow_overwrite and fp.exists():
             as_fn = lambda p, n, e, i: Path(p.parent, f"{n}{'.' + encode_int(i) if i else ''}{'.' + e if e else ''}")
             num = 0
-            name, ext = fp.parts[-1].rsplit('.', 1)
+            name, ext = fp.stem, fp.suffix[1:]
             new_fp = as_fn(fp, name, ext, num)
             while len(new_fp.parts[-1]) < MAX_FILE_NAME_LENGTH and new_fp.exists():
                 num += 1
@@ -130,10 +129,11 @@ class DataMapping(object):
             if len(new_fp.parts[-1]) >= MAX_FILE_NAME_LENGTH or new_fp.exists():
                 raise FileExistsError(f"Please chose a different file name as the calculated file name of '{new_fp.as_posix()}' is either too long ({len(new_fp.as_posix())} >= {MAX_FILE_NAME_LENGTH} ?) or too many files exist with the same base name")
             fp = new_fp
-        # find output file extention type
+        # Serialize before opening the destination so invalid data cannot truncate it.
         try:
-            with open(fp.as_posix(), 'w', encoding='utf-8') as f:
-                json.dump(self.__dict__)
+            serialized = json.dumps(self.__dict__, ensure_ascii=False)
         except TypeError as e:
-            raise TypeError(f"{self.__name__} contains data that is unserializable by json!")
+            raise TypeError(f"{type(self).__name__} contains data that is unserializable by json!") from e
+        with open(fp, 'w', encoding='utf-8') as f:
+            f.write(serialized)
         return fp
