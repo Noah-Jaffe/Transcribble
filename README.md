@@ -321,3 +321,15 @@ Note that this issue should be fixed as of Transcribble release 1.1.1!
 - [ ] Research Inter-sentential code-switching
 - [ ] Custom setup for auto run script on output .cha file?
 - [ ] Remove reliance on batchalign?
+
+
+
+
+
+
+
+## Acknowledgments
+
+This project used a version of [Batchalign](https://github.com/talkbank/batchalign2) for language sample analysis. Please cite the associated paper:
+
+Liu, H., MacWhinney, B., Fromm, D., & Lanzi, A. (2023). Automation of Language Sample Analysis. *Journal of Speech, Language, and Hearing Research, 66*(7), 2421–2433. https://doi.org/10.1044/2023_JSLHR-22-00642
