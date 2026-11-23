@@ -37,6 +37,64 @@ import soundfile
 from datetime import datetime
 # from CustomAiEngine import CustomAiEngine
 
+########### PATCHES FOR DEPENDENCIES #############
+
+
+def patch_issues():
+    import importlib
+    import batchalign as ba
+
+    module = importlib.import_module("batchalign.pipelines.speaker.nemo_speaker")
+
+    # Patch both class references in case Batchalign exposes an alias.
+    classes = {
+        ba.NemoSpeakerEngine,
+        module.NemoSpeakerEngine,
+    }
+
+    for Engine in classes:
+        if getattr(Engine, "_transcribble_alignment_patch", False):
+            print(f"[Transcribble] NeMo patch already installed: {Engine}",flush=True)
+            continue
+
+        original_process = Engine.process
+
+        def make_patched_process(original):
+            def patched_process(self, doc, **kwargs):
+                # Keep the complete original content for restoration.
+                original_content = list(doc.content)
+
+                # Temporarily exclude utterances that have no alignment.
+                doc.content[:] = [
+                    ut for ut in original_content
+                    if getattr(ut, "alignment", None) is not None
+                ]
+
+                try:
+                    # Run Batchalign's original implementation.
+                    return original(self, doc, **kwargs)
+                finally:
+                    # Restore every utterance in its original order.
+                    doc.content[:] = original_content
+
+            return patched_process
+
+        Engine.process = make_patched_process(original_process)
+        Engine._transcribble_alignment_patch = True
+
+        print(
+            f"[Transcribble] Successfully patched: "
+            f"{Engine.__module__}.{Engine.__name__}.process",
+            flush=True
+        )
+
+    print(
+        "PATCHED: batchalign 0.7.21.post11 expecting all utterances to require a timestamp. Would occasionally throw errors. 0.8.2.post15 has a fix for this issue but upgrading causes other issues so we didnt look into a better fix for it yet."
+        "[Transcribble] SUCCESS: patched ba.NemoSpeakerEngine.process",
+        flush=True
+    )
+
+#####################################
 
 DEBUG_LINE_PREFIX = "@DEBUG"
 DEBUG_PREAMBLE = "\n".join([f"{DEBUG_LINE_PREFIX} {line}" for line in [
@@ -128,6 +186,8 @@ def transcribe_file(input_file, model_name=None, num_speakers=2, lang="eng", ope
     # @todo in the future enable us to use any form of AI tool
     #   this will require us to normalize the tool's output.
     # whisper = CustomAiEngine(model=model_name, lang=lang)
+    
+    patch_issues()
     
     # split by speaker
     diarization = ba.NemoSpeakerEngine(num_speakers=num_speakers) if num_speakers > 1 else None
